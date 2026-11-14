@@ -5,7 +5,7 @@
  *
  *   read   22 DA5F (bus 1) / 22 E3D1 (bus 2): the BDC asks its LIN modules first (7F 22 78, the reply seconds
  *          later): 26 records of 10 bytes - location, blue, green, red, brightness, white, short circuit,
- *          over-temperature, open load, internal fault; an empty record has location FF.
+ *          over-temperature, open load, internal fault; an empty record has location FF (00 on a G30).
  *   write  2E DA5E (bus 1) / 2E E3D1 (bus 2): NAD (the record's place, 1-based), on 1 / off 0, brightness
  *          0-100, red, green, blue, seconds 0-254. The module shows the colour for that long, then the car's own
  *          colour again; off (all 0) gives the car's colour at once. A colour byte FF means "no change", so
@@ -73,7 +73,9 @@ function parseStatus(bus, uds) {
     const out = [];
     for (let i = 0; i < RECORDS; i++) {
         const r = b.slice(3 + i * RECORD, 3 + (i + 1) * RECORD);
-        if (r.length < RECORD || r[0] === 0xff) continue;
+        // an empty record: location FF (G05, G20), or 00 with the colour FF FF FF (G30: the bus's 26 records, 7 of them
+        // empty); a location 00 is no light on any car
+        if (r.length < RECORD || r[0] === 0xff || r[0] === 0x00) continue;
         out.push(Object.assign(place(r[0]), { bus, nad: i + 1, rgb: [r[3], r[2], r[1]], bright: r[4], fault: !!(r[6] || r[7] || r[8] || r[9]) }));
     }
     return out;

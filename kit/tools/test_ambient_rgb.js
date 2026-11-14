@@ -41,6 +41,13 @@ ok(bus1[0].rgb.join() === '120,60,254' && bus1[0].bright === 100 && bus1[1].faul
 ok(L.parseStatus(0, [0x7f, 0x22, 0x31]) === null && L.parseStatus(1, reply([0xda, 0x5f], [1])) === null, 'status: a refusal or another bus\'s reply is none');
 ok(L.writeFrame(0, 3, [255, 0, 300], 120, 400).join() === [0xda, 0x5e, 3, 1, 100, 0xfe, 0, 0xfe, 254].join(), 'write: colours stop at FE, brightness 100, 254 s');
 ok(L.writeFrame(1, 1, [10, 20, 30], 50, 5).slice(0, 2).join() === [0xe3, 0xd1].join() && L.releaseFrame(1, 4).join() === [0xe3, 0xd1, 4, 0, 0, 0, 0, 0, 0].join(), 'bus 2 write; give back');
+{
+    // a G30's bus: 19 lights, then 7 empty records with location 00 and colour FF FF FF
+    const g30 = [0x62, 0xda, 0x5f];
+    for (let i = 0; i < 26; i++) g30.push.apply(g30, i < 19 ? [0x01 + i, 58, 5, 0, 100, 0, 0, 0, 0, 0] : [0, 0xff, 0xff, 0xff, 0, 0, 0, 0, 0, 0]);
+    const got = L.parseStatus(0, g30);
+    ok(got.length === 19 && got.every((l) => l.loc !== 0), 'status: a G30\'s empty records (location 00) are no lights (' + got.length + ')');
+}
 ok(L.sample().length === 19, 'the picture\'s G20 before the car answers');
 
 // scenes
