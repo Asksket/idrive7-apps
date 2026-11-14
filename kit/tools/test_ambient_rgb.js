@@ -152,7 +152,8 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     await sleep(300);
     ok(writes.length === 0, 'read back scaled: nothing written again (' + writes.length + ' writes)');
     dimRead = 1;
-    ok(sameShade([254, 0, 0], [44, 2, 0]) && sameShade([0, 0, 254], [0, 5, 58]) && !sameShade([254, 0, 0], [0, 5, 58]) && !sameShade([254, 0, 0], [0, 0, 0]) && !sameShade([254, 0, 0], [254, 100, 0]),
+    ok(sameShade([254, 0, 0], [44, 2, 0]) && sameShade([0, 0, 254], [0, 5, 58]) && !sameShade([254, 0, 0], [0, 5, 58]) && !sameShade([254, 0, 0], [0, 0, 0]) && !sameShade([254, 0, 0], [254, 100, 0])
+        && sameShade([160, 0, 254], [20, 2, 24]) && sameShade([160, 0, 254], [32, 1, 31]) && sameShade([0, 254, 0], [0, 73, 0]) && !sameShade([160, 0, 254], [0, 5, 58]),
         'the shade: a G30\'s dimmed reads match, another colour or dark does not');
     lit[1][3] = [9, 9, 9];
     const rb = await lights.readBack();

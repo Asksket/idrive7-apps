@@ -36,12 +36,15 @@ const REASSERT_MS = [1500, 4000, 8000];   // reassert(): a new driving mode's re
 
 const echo = (sid, did) => (u) => (u[0] === sid + 0x40 && u[1] === did[0] && u[2] === did[1]) || (u[0] === 0x7f && u[1] === sid);
 const hex = (b) => Array.prototype.map.call(b || [], (x) => ('0' + (x & 0xff).toString(16).toUpperCase()).slice(-2)).join(' ');
-/* A colour read back against the one written: some cars' body module (a G30's) reports each colour scaled by the light's
- * brightness and the car's dimming (254,0,0 reads 44,2,0 there), so the shade is compared, not the level. */
+/* A colour read back against the one written: some cars' body module (a G30's) reports each channel scaled by the
+ * light's brightness and its own curve, not in step (254,0,0 reads 44,2,0; 160,0,254 reads 20,2,24), so only which
+ * channels are lit is compared: a channel clearly on in one and clearly off in the other is another colour. */
+const ON = 0.35, OFF = 0.12;
 const shade = (rgb) => { const m = Math.max.apply(null, rgb); return m > 0 ? rgb.map((v) => v / m) : null; };
 const sameShade = (want, read) => {
     const a = want ? shade(want.map((v) => Math.min(254, v))) : null, b = read ? shade(read) : null;
-    return !a || !b ? !a && !b && !!want && !!read : a.every((v, i) => Math.abs(v - b[i]) < 0.2);
+    if (!a || !b) return !a && !b && !!want && !!read;
+    return a.every((v, i) => !((v >= ON && b[i] < OFF) || (b[i] >= ON && v < OFF)));
 };
 const same = (a, b) => !!a && !!b && Math.abs(a.bright - b.bright) < 2 && a.rgb.every((x, i) => Math.abs(x - b.rgb[i]) < 3);
 
