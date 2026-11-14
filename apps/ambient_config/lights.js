@@ -149,13 +149,22 @@ class Lights extends EventEmitter {
     /** A colour over the lights test(light) picks: at(ms since it began) -> { rgb, bright }; test null: taken off. */
     overlay(key, test, at) {
         if (!this._overs) this._overs = new Map();
+        const covered = () => { const o = Array.from(this._overs.values()); return this.lights.filter((l) => o.some((x) => x.test(l))); };
+        const before = covered();
         if (!test) {
             if (!this._overs.delete(key)) return;
-            // with no colour of ours on, those lights go back to the car's
-            if (!this.scene && !this._overs.size) this._giveBack();
         } else {
             this._overs.delete(key);
             this._overs.set(key, { test, at, t0: this.now() });
+        }
+        // with no colour of ours on, the lights no overlay picks any more go back to the car's (one door of two closed:
+        // its lights, not the other's), every light at once when none is left
+        if (!this.scene) {
+            if (!this._overs.size) this._giveBack();
+            else {
+                const now = covered();
+                before.filter((l) => now.indexOf(l) < 0 && this._last.has(l)).forEach((l) => this._release.push({ light: l }));
+            }
         }
         this._frame = null;
         this._kick();

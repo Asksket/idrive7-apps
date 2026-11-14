@@ -221,6 +221,19 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
         lights.overlay('doors', null);
         await sleep(300);
     }
+    // two doors open with the car's own colour on, then one closed: its light goes back to the car's at once, the other
+    // door stays red (both stayed red until the last door closed)
+    {
+        const two = (l) => l.name === 'Driver front door line' || l.name === 'Passenger front door line';
+        lights.overlay('doors', two, () => ({ rgb: [255, 0, 0], bright: 100 }));
+        await sleep(200);
+        ok(lit[1][2].join() === '254,0,0' && lit[0][1].join() === '254,0,0', 'two doors open: both red');
+        lights.overlay('doors', (l) => l.name === 'Driver front door line', () => ({ rgb: [255, 0, 0], bright: 100 }));
+        await sleep(200);
+        ok(lit[0][1].join() === '0,0,0' && lit[1][2].join() === '254,0,0', 'the passenger door closed: its light the car\'s again, the driver\'s still red');
+        lights.overlay('doors', null);
+        await sleep(300);
+    }
     // an overlay with the car's own colour on: only the lights it picks are written, the rest keep the car's colour
     writes.length = 0;
     lights.overlay('doors', (l) => l.name === 'Driver front door line', () => ({ rgb: [255, 0, 0], bright: 100 }));
