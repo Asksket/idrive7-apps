@@ -2392,5 +2392,13 @@
   "Fast (the car's eDRIVE needle)": "빠르게 (차량 eDRIVE 게이지 바늘)",
   "Battery readings only": "배터리 측정값만",
   "Police": "경찰",
-  "Strobe": "스트로브"
+  "Strobe": "스트로브",
+  "App Monitor": "앱 모니터",
+  "Refresh every": "새로 고침 간격",
+  "Custom apps": "사용자 앱",
+  "All apps": "모든 앱",
+  "Sort by": "정렬 기준",
+  "Share of memory limit": "메모리 한도 비율",
+  "Running time": "실행 시간",
+  "Warn at": "경고 기준"
 }

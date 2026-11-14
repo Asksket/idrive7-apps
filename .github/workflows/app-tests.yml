@@ -59,6 +59,7 @@ jobs:
       - run: node kit/tools/test_fastkw.js
       - run: node kit/tools/test_widget_fixes.js
       - run: node kit/tools/test_warmup.js
+      - run: node kit/tools/test_app_monitor.js
       - run: node kit/tools/test_draggy.js
       - run: node kit/tools/test_brake_test.js
       - run: node kit/tools/test_gforce.js
@@ -126,3 +127,4 @@ jobs:
       - run: node kit/tools/test_redline_meter_draw.js
       - run: node kit/tools/test_redline_meter_m.js
       - run: node kit/tools/test_redline_hud_cache.js
+      - run: node kit/tools/test_app_monitor.js
