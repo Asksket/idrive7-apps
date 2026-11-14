@@ -1,0 +1,54 @@
+{
+  "id": "tubecar",
+  "title": "TubeCar",
+  "description": "Unofficial YouTube client: search, results and playback. The sound plays through the car's media player; the picture shows only while the car is parked. Needs the MGU Store's internet uplink, and its GPU renderer for the picture.",
+  "version": "0.1.0",
+  "vendor": "custom",
+  "loggingId": "OAT7",
+  "iconGlyph": "YT",
+  "internet": true,
+  "memoryKB": 262144,
+  "cpuLimit": 80,
+  "credits": ["TubeCar (unofficial YouTube client)", "Picture decoder: h264bsd / tinyh264, Apache-2.0 (NOTICE)"],
+  "signals": {
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "statusCarSpeed2": "rs",
+      "_optional": "no speed signal: the picture is shown at any speed"
+    },
+    "org.genivi.am.commandinterface.CommandControl": {
+      "_instances": "1",
+      "_methods": ["getListMainSources", "getListMainSinks", "getListMainConnections", "connect", "disconnect"],
+      "_optional": "no sound: the car's audio manager is not reachable"
+    },
+    "de.bmw.infotainment.entertainment.mediaplayer.MediaPlayer": {
+      "_instances": "OapGenericMedia",
+      "_methods": ["playFile", "sendButtonEvent", "setTime"],
+      "_broadcasts": ["playbackErrorEvent"],
+      "playerState": "s",
+      "currentItemTime": "s",
+      "_optional": "no sound: the car's media player for apps is not reachable"
+    }
+  },
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "TubeCar",
+      "buttons": [
+        ["BTN_PREV", "Previous"],
+        ["BTN_NEXT", "Next"],
+        ["BTN_OK", "Select"],
+        ["BTN_SETTINGS", "Settings"]
+      ]
+    }
+  ],
+  "settings": [
+    {"key": "region", "label": "Search language and region", "type": "choice", "default": "en-US",
+     "options": [["en-US", "English (US)"], ["en-GB", "English (UK)"], ["ro-RO", "Romana"], ["de-DE", "Deutsch"],
+                 ["fr-FR", "Francais"], ["it-IT", "Italiano"], ["es-ES", "Espanol"]]},
+    {"key": "keepSound", "label": "Keep the sound playing when leaving the app", "type": "bool", "default": true},
+    {"key": "keepHistory", "label": "Remember searches", "type": "bool", "default": true},
+    {"key": "theme", "label": "Colour theme", "type": "choice", "default": "m_tricolour",
+     "options": [["m_tricolour", "M Tricolour"], ["m_red", "M Red"], ["ice", "Ice White"]]}
+  ]
+}

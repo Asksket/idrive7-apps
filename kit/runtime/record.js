@@ -18,6 +18,8 @@ const { t } = require('./i18n');
 const OP = {
     CLEAR: 1, RECT: 2, GRAD: 3, RRECT: 4, RSTROKE: 5, CARD: 6, RAMPRECT: 7, ARC: 8, LINE: 9,
     TRIS: 10, GLYPHS: 11, LAYER: 12, CLIP: 13, NOCLIP: 14, QUAD: 15, ALPHA: 16, XF: 17, IMAGE: 18,
+    // mgu-render/1 (kit/renderd/PROTOCOL.md "Video"): x y w h r (f32), id (u32)
+    VIDEO: 19,
 };
 
 /* ---------- colours: 0xRRGGBBAA ---------- */
@@ -90,6 +92,7 @@ class Recorder {
         this.ramps = new Set();
         this.images = new Set();     // pixel images it draws (setImage)
         this.targets = [];           // what a tap or the controller can press on the page: { x, y, w, h, run, key } (target)
+        this.videos = new Set();     // video ids it draws (video(); their frame files are named with display.video())
         this._extra = 0;
         this.extraUsed = false;      // the drawing read extra (it reaches below the page: display.js places it so)
         this.recording = true;
@@ -97,7 +100,7 @@ class Recorder {
     /** logical px the screen has below the app's page (display.js), 0 if none */
     get extra() { if (this._extra) this.extraUsed = true; return this._extra; }
     set extra(v) { this._extra = v || 0; }
-    reset() { this.n = 0; this._cnStamped = false; this.targets = []; this.scroll = false; this.extraUsed = false; if (this.layersUsed) this.layersUsed.clear(); this.atlases.clear(); this.ramps.clear(); this.images.clear(); return this; }
+    reset() { this.n = 0; this._cnStamped = false; this.targets = []; this.scroll = false; this.extraUsed = false; if (this.layersUsed) this.layersUsed.clear(); this.atlases.clear(); this.ramps.clear(); this.images.clear(); this.videos.clear(); return this; }
     _grow(k) {
         if (this.n + k <= this.u.length) return;
         let len = this.u.length * 2;
@@ -123,6 +126,19 @@ class Recorder {
         this._grow(7); const f = this.f, i = this.n;
         this.u[i] = OP.IMAGE; this.u[i + 1] = id; this.u[i + 2] = im.ver; f[i + 3] = x; f[i + 4] = y; f[i + 5] = w; f[i + 6] = h;
         this.images.add(id);
+        this.n += 7; return this;
+    }
+    /**
+     * The newest frame of video `id` fitted into x, y, w, h (aspect kept, centred), corner radius r. A player
+     * process writes the frames to a file (kit/renderd/PROTOCOL.md "Video"); display.video(id, file) names it to
+     * the renderer. Drawn by the GPU renderer only (mgu-render/1 with the video capability): the software path
+     * leaves the rect as it is, so draw something under it.
+     */
+    video(id, x, y, w, h, r) {
+        if (!(w > 0 && h > 0)) return this;
+        this._grow(7); const f = this.f, i = this.n;
+        this.u[i] = OP.VIDEO; f[i + 1] = x; f[i + 2] = y; f[i + 3] = w; f[i + 4] = h; f[i + 5] = r || 0; this.u[i + 6] = id >>> 0;
+        this.videos.add(id >>> 0);
         this.n += 7; return this;
     }
     clear(c) { this._grow(2); this.u[this.n++] = OP.CLEAR; this.u[this.n++] = pack(c || [0, 0, 0, 0]); return this; }
@@ -237,6 +253,7 @@ class Recorder {
         this._grow(w.length); this.u.set(w, this.n); this.n += w.length;
         r.atlases.forEach((a) => this.atlases.add(a)); r.ramps.forEach((a) => this.ramps.add(a));
         if (r.images) r.images.forEach((id) => this.images.add(id));
+        if (r.videos) r.videos.forEach((id) => this.videos.add(id));
         if (r.layersUsed) r.layersUsed.forEach((id) => (this.layersUsed || (this.layersUsed = new Set())).add(id));
         return this;
     }
@@ -428,6 +445,7 @@ function play(words, real) {
         }
         case OP.LAYER: { const L = layerById.get(u[i]); if (L) cv.blit(softLayer(L), f[i + 1], f[i + 2]); i += 3; break; }
         case OP.IMAGE: { const im = imageById.get(u[i]); if (im && cv.drawImage) cv.drawImage(im.data, im.w, im.h, f[i + 2], f[i + 3], f[i + 4], f[i + 5]); i += 6; break; }
+        case OP.VIDEO: i += 6; break;                                                  // (software path: GPU only)
         case OP.CLIP: clip = [f[i], f[i + 1], f[i + 2], f[i + 3]]; i += 4; break;     // (software path: ignored)
         case OP.NOCLIP: clip = null; break;
         case OP.ALPHA: alpha = f[i]; i += 1; break;

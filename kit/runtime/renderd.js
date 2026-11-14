@@ -33,6 +33,8 @@ const E = { READY: 101, TICK: 102, ERROR: 103, STATS: 104, CCU: 105 };
 const CLAIM = 9, TOUCH = 105, CLOSED = 106;
 // mgu-render/1 (mgu-store native/mgu-render/PROTOCOL.md)
 const X = { MODE: 0x4d520001, GRAB: 0x4d520002, READY: 0x4d520101, STATE: 0x4d520102, CCU: 0x4d520103 };
+// video frames from a player's file (PROTOCOL.md "Video"; iterio and native dialects; X_READY caps bit 16)
+const VIDEO = 13, DROP_VIDEO = 14, CAP_VIDEO = 16;
 const X_MODE_LAYER = 1;
 
 function msg(type, payload) {
@@ -69,6 +71,7 @@ class RenderClient extends EventEmitter {
         this.info = null;            // X_READY: { touch, controller, frontGate }
         this.area = null;            // X_READY: the app area { x, y, w, h } (screen px), null: not told
         this.onScreen = null;        // X_STATE: the renderer shows us (null: not told)
+        this.videos = new Map();     // video id -> frame file (video()); named again on every connection and new size
     }
 
     /** Socket exists (the renderer is installed and running)? */
@@ -210,7 +213,7 @@ class RenderClient extends EventEmitter {
             if (type === X.READY && p.length >= 12) {
                 const caps = p.readUInt32LE(8);
                 this.native = true;
-                this.info = { touch: !!(caps & 1), controller: !!(caps & 2), frontGate: !!(caps & 4) };
+                this.info = { touch: !!(caps & 1), controller: !!(caps & 2), frontGate: !!(caps & 4), video: !!(caps & CAP_VIDEO) };
                 // the app area (where the HMI leaves room for apps, in screen px): after the embed box
                 this.area = p.length >= 44 ? { x: p.readInt32LE(28), y: p.readInt32LE(32), w: p.readInt32LE(36), h: p.readInt32LE(40) } : null;
             } else if (type === E.READY) {
@@ -225,6 +228,7 @@ class RenderClient extends EventEmitter {
                 // after the app's placement (sent in 'ready'): SHOW again. A SHOW sent before the renderer
                 // knew where the app goes (or before X_MODE) left the first app opened after start blank.
                 if (this.placement) this._sendPlace();
+                this._sendVideos();
                 if (this.visible) this._write(this._u32msg(M.SHOW, [1]));
                 if (this.native && this.grabbing) this._sendGrab(1);
             } else if (this.native && type === X.STATE && p.length >= 12) {
@@ -274,6 +278,30 @@ class RenderClient extends EventEmitter {
         if (resize) this._reset();
         else if (scaleChanged) { this.sent.layer.clear(); this.waiting = false; }
         if (this.ready) this._sendPlace();
+        if (resize) this._sendVideos();           // the renderer dropped them with the old size
+    }
+
+    /** The renderer draws videos (mgu-render/1 with the video capability): VIDEO ops show something. */
+    videoReady() { return !!(this.ready && this.native && this.info && this.info.video); }
+    /**
+     * Video `id`'s frames come from `file` (/dev/shm/mgu-video-<name>, written by a player: PROTOCOL.md "Video");
+     * null forgets it. Kept, and named again on every new connection and size.
+     */
+    video(id, file) {
+        id = id >>> 0;
+        if (!file) {
+            if (this.videos.delete(id) && this.videoReady()) this._write(this._u32msg(DROP_VIDEO, [id]));
+            return;
+        }
+        if (this.videos.get(id) === file) return;
+        this.videos.set(id, file);
+        if (this.videoReady()) this._sendVideo(id, file);
+    }
+    _sendVideos() { if (this.videoReady()) this.videos.forEach((file, id) => this._sendVideo(id, file)); }
+    _sendVideo(id, file) {
+        const head = Buffer.alloc(4);
+        head.writeUInt32LE(id, 0);
+        this._write(msg(VIDEO, Buffer.concat([head, Buffer.from(String(file) + '\0')])));
     }
     _sendPlace() {
         const p = this.placement, b = Buffer.alloc(28);

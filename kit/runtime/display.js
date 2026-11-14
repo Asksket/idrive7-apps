@@ -206,9 +206,22 @@ class Display {
         // the HMI was touched outside the tabs: shown again unless that left the screen
         gpu.on('closed', () => setTimeout(() => { if (this.gpu === gpu) this._syncVisible(); }, 700));
         G.onLayerDrop((id) => { if (this.gpu) this.gpu.dropLayer(id); });
+        if (this.videoFiles) this.videoFiles.forEach((f, id) => gpu.video(id, f));
         gpu.connect();
         if (this.grabbing) gpu.grab(true);
     }
+
+    /**
+     * Video `id`'s frames come from `file` (a player's /dev/shm/mgu-video-<name>, PROTOCOL.md "Video"), drawn where a
+     * frame records video(id, ...) (record.js); null forgets it. Kept across renderer restarts.
+     */
+    video(id, file) {
+        const m = this.videoFiles || (this.videoFiles = new Map());
+        if (file) m.set(id >>> 0, file); else m.delete(id >>> 0);
+        if (this.gpu) this.gpu.video(id, file);
+    }
+    /** The renderer draws videos now: a VIDEO op shows the player's picture (else the app draws its own fallback). */
+    videoReady() { return !!(this.gpu && this.gpu.videoReady()); }
 
     /**
      * In front without the controller: the renderer offers it only if no other renderer held it when this app

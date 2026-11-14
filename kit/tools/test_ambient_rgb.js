@@ -107,6 +107,23 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     await sleep(300);
     ok(writes.length === 2, 'a still colour: read back, nothing more until the renewal');
 
+    // the car puts its own colour on by itself after our checks (as on a new driving mode): left as it is until the
+    // renewal, unless asked to look again (recheck): then written again within the next read-back
+    lit[0].forEach((x, i) => { lit[0][i] = [0, 0, 254]; }); lit[1].forEach((x, i) => { lit[1][i] = [0, 0, 254]; });
+    writes.length = 0;
+    await sleep(200);
+    ok(writes.length === 0 && lit[1][0].join() === '0,0,254', 'the car\'s own colour over ours: not seen without a read-back');
+    lights.recheck(3);
+    await sleep(300);
+    // (bus 1: 0x0f pocket lower, 0x0c door line upper; bus 2: 0x15 dash, 0x01 footwell lower, 0x05 and 0x13 lines)
+    const want = [['0,0,254', '254,0,0'], ['254,0,0', '0,0,254', '254,0,0', '254,0,0']];
+    ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.length === 3,
+        'recheck: read back, the upper lights red again, the lower ones blue, only what differs written (' + writes.length + ' writes)');
+    lights.show(look('breathing')); lights.recheck(3);
+    ok(lights._checks === 0, 'recheck: nothing to read back for a moving look (written over and over anyway)');
+    lights.show(look('solid'));
+    await sleep(300);
+
     // the body controller drops a write (answered 6E, not taken): the read-back writes it again
     writes.length = 0; drop = { bus: 1, nad: 0 };
     lights.show(look('solid', { upper: { rgb: [0, 255, 0], bright: 80 }, lower: { rgb: [0, 255, 0], bright: 80 } }));
@@ -185,7 +202,7 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     const settings = { get: (k) => values[k], set: (k, v) => { values[k] = v; fns.forEach((f) => f(k, v)); }, onChange: (f) => fns.push(f) };
     const shows = [];
     const fake = { scene: null, overs: {}, show(s) { this.scene = s; shows.push(s); }, carColour() { this.scene = null; shows.push(null); }, dim(f) { this.f = f; }, flash(rgb, ms) { this.flashed = [rgb, ms]; },
-        overlay(k, test, at) { if (test) this.overs[k] = { test, at }; else delete this.overs[k]; } };
+        overlay(k, test, at) { if (test) this.overs[k] = { test, at }; else delete this.overs[k]; }, recheck(n) { this.rechecks = (this.rechecks || 0) + 1; } };
     const amb = new EventEmitter(); amb._m = 'comfort'; amb.mode = () => amb._m;
     const c = new Control({ settings, lights: fake, ambient: amb, log });
     c.start();
@@ -195,8 +212,10 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     c.setModeLook('sport', look('breathing'));
     amb._m = 'sport'; amb.emit('change');
     ok(fake.scene.kind === 'pulse' && fake.scene.then.kind === 'breathing', 'Sport picked: the pulse, then Sport\'s look');
+    const rc = fake.rechecks || 0;
     amb._m = 'comfort'; amb.emit('change');
     ok(fake.scene.kind === 'solid' && fake.scene.upper.rgb.join() === '0,255,0', 'Comfort (Leave as is): the driver\'s look back');
+    ok(fake.rechecks === rc + 1, 'a new driving mode: the lights read back (the car may have put its own colour on)');
     settings.set('follow', false); c.apply();
     amb._m = 'sport'; amb.emit('change');
     ok(fake.scene.upper.rgb.join() === '0,255,0' && fake.scene.kind !== 'breathing', 'not following: the driver\'s look in Sport too');

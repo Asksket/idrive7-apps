@@ -148,6 +148,18 @@ class Lights extends EventEmitter {
 
     dim(f) { if (f !== this._dim) { this._dim = f; this._frame = null; this._kick(); } }
 
+    /**
+     * Read the lights back n times from now (a still colour of ours only): something other than this app may have
+     * changed them, as the car's own light does on a new driving mode, and a write answered 6E proves nothing. A light
+     * that does not show its colour is written again within seconds, instead of at its renewal (up to RENEW_MS later).
+     */
+    recheck(n) {
+        if (!this.scene || S.moves(this.scene) || !this.lights.length) return;
+        this._checks = Math.max(this._checks, n || 2);
+        this._checkOff = false;
+        this._kick();
+    }
+
     stop() { this._stopped = true; clearTimeout(this._timer); clearTimeout(this._onceTimer); }
 
     /** Every bus with a light of ours on it given back (one write each), then read back once. */
