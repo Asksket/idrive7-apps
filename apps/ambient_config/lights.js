@@ -32,8 +32,8 @@ const CHECK_MS = 1500;         // a still colour's read-back, this long after it
 const HOLD_WAIT_MS = 3000;     // hold(): the longest it waits for a write (or read-back) of ours under way
 // the zone test's colours: green above, purple below, unlike most looks, so the change shows in the car
 const TEST_UPPER = [0, 254, 0], TEST_LOWER = [160, 0, 254];
-const REASSERT_MS = [1000, 2500, 4500, 7000];
-const PER_LIGHT_MS = 9000;   // reassert(): this long, each light written on its own (no colour on the whole bus first)   // reassert(): a new driving mode's rewrites, this long after it
+const REASSERT = { whole: 4200, each: 6800 };   // reassert(): a new driving mode's rewrites, this long after it
+const PER_LIGHT_MS = 6000;   // reassert(): this long, each light written on its own (no colour on the whole bus first)
 
 const echo = (sid, did) => (u) => (u[0] === sid + 0x40 && u[1] === did[0] && u[2] === did[1]) || (u[0] === 0x7f && u[1] === sid);
 const hex = (b) => Array.prototype.map.call(b || [], (x) => ('0' + (x & 0xff).toString(16).toUpperCase()).slice(-2)).join(' ');
@@ -176,24 +176,31 @@ class Lights extends EventEmitter {
     }
 
     /**
-     * Every light written anew after each of these delays (a still colour of ours only): the car puts its own colour
-     * on by itself on a new driving mode, sometimes seconds after our write, and the read-back cannot be trusted to see
-     * it on every car. A whole-car colour is two writes, so this costs little.
+     * After a new driving mode (a still colour of ours only). The car puts its own colour on every light by itself then
+     * and takes no write of ours for about four seconds (seen on a G30: our colour came back only after that). So:
+     * the whole look written again at REASSERT.whole (one write a bus for the colour most lights want, then the
+     * others: all at once, the rest within about two seconds), then every light once more on its own at
+     * REASSERT.each (no whole-bus write: nothing flashes where the look already shows), then one read-back. No read-back
+     * before: a read takes seconds and holds the writes up. plan: { whole, each } ms (tests).
      */
-    reassert(delays) {
-        this._reTimers = this._reTimers || [];
-        // written light by light meanwhile: a whole-bus write of the colour most lights want first would flash the
-        // others in it (all red, then the lower ones blue again) at every rewrite
-        this._perLightTill = this.now() + PER_LIGHT_MS;
-        (delays || REASSERT_MS).forEach((d) => {
+    reassert(plan) {
+        const p = plan || REASSERT;
+        (this._reTimers || []).forEach((t) => clearTimeout(t));
+        this._reTimers = [];
+        this._checks = 0; this._checkAt = 0;
+        const step = (ms, whole) => {
             const tm = setTimeout(() => {
                 this._reTimers = this._reTimers.filter((x) => x !== tm);
                 if (this._stopped || !this.scene || S.moves(this.scene) || !this.lights.length) return;
                 this._last.clear(); this._frame = null;
+                this._perLightTill = whole ? 0 : this.now() + PER_LIGHT_MS;
+                if (!whole) this._checks = Math.max(this._checks, 1);
                 this._kick();
-            }, d);
+            }, ms);
             this._reTimers.push(tm);
-        });
+        };
+        step(p.whole, true);
+        step(p.each, false);
     }
 
     /**
@@ -434,4 +441,4 @@ class Lights extends EventEmitter {
     }
 }
 
-module.exports = { Lights, HOLD_S, RENEW_MS, MOVE_HOLD_S, REASSERT_MS, TEST_UPPER, TEST_LOWER, sameShade };
+module.exports = { Lights, HOLD_S, RENEW_MS, MOVE_HOLD_S, REASSERT, TEST_UPPER, TEST_LOWER, sameShade };

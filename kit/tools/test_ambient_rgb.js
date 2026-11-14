@@ -126,13 +126,20 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     const want = [['0,0,254', '254,0,0'], ['254,0,0', '0,0,254', '254,0,0', '254,0,0']];
     ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.length === 4 && writes.every((w) => w[2] !== 0),
         'recheck: read back, the upper lights red again, each on its own (the footwell, still blue, not touched) (' + writes.length + ' writes)');
-    // reassert (a new driving mode): every light written again after each delay, also with a read-back that sees nothing
+    // reassert (a new driving mode): the car's own colour on every light; once the car takes writes again the whole look
+    // goes on (a write a bus for the majority first), then every light once more on its own, then one read-back
     lit[0].forEach((x, i) => { lit[0][i] = [0, 0, 254]; }); lit[1].forEach((x, i) => { lit[1][i] = [0, 0, 254]; });
     writes.length = 0;
-    lights.reassert([30, 80]);
-    await sleep(200);
-    ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.length >= 12 && writes.every((w) => w[2] !== 0),
-        'reassert: every light written anew, each on its own, no colour on the whole bus first (' + writes.length + ' writes)');
+    lights.reassert({ whole: 30, each: 140 });
+    ok(lights._checks === 0 && !lights._checkAt, 'reassert: no read-back before the rewrites (a read holds the writes up)');
+    await sleep(120);
+    const whole = writes.slice();
+    ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && whole.some((w) => w[0] === 0xe3 && w[2] === 0),
+        'reassert, the whole look: the majority on the whole bus at once, then the others (' + whole.map((w) => w[2]).join() + ')');
+    await sleep(250);
+    const each = writes.slice(whole.length);
+    ok(each.length >= 6 && each.every((w) => w[2] !== 0) && lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])),
+        'reassert, then each light once more on its own, nothing on the whole bus (' + each.length + ' writes)');
     lights._perLightTill = 0;
     // the zone test: each light on its own (no NAD 0), then read back; a light the body module drops: missed
     writes.length = 0; drop = { bus: 1, nad: 2 }; lit[1][1] = [0, 254, 0];
@@ -270,10 +277,9 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     c.setModeLook('sport', look('breathing'));
     amb._m = 'sport'; amb.emit('change');
     ok(fake.scene.kind === 'pulse' && fake.scene.then.kind === 'breathing', 'Sport picked: the pulse, then Sport\'s look');
-    const rc = fake.rechecks || 0, ra = fake.reasserts || 0;
+    const ra = fake.reasserts || 0;
     amb._m = 'comfort'; amb.emit('change');
     ok(fake.scene.kind === 'solid' && fake.scene.upper.rgb.join() === '0,255,0', 'Comfort (Leave as is): the driver\'s look back');
-    ok(fake.rechecks === rc + 1, 'a new driving mode: the lights read back (the car may have put its own colour on)');
     ok(fake.reasserts === ra + 1, 'a new driving mode: every light written again over the next seconds');
     settings.set('follow', false); c.apply();
     amb._m = 'sport'; amb.emit('change');

@@ -95,10 +95,10 @@ class Control {
             return;
         }
         this.apply();
-        // the car changes the lights itself on a new driving mode (its own colour), sometimes seconds after our write:
-        // every light written again a few times in the next seconds, and read back, rather than at the next renewal
+        // the car puts its own colour on by itself on a new driving mode and takes no write for a few seconds: the look
+        // written again once it does, then read back (lights.reassert)
         if (this.lights.reassert) this.lights.reassert();
-        this.lights.recheck(3);
+        else this.lights.recheck(3);
     }
 
     /** The car locked and left (true), or someone back in (false). */
