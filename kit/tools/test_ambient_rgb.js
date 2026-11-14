@@ -208,6 +208,18 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     await sleep(500);
     ok(lit[0].concat(lit[1]).every((c) => c.join() === '0,0,0'), 'after the flash with the car\'s colour on: given back');
 
+    // an overlay that changes on its own time, with the car's own colour on and nothing to write for now: the writing
+    // goes on looking (a door's slow pulse stopped after its first step, the car's colour back for good)
+    {
+        let red = true;
+        lights.overlay('doors', (l) => l.name === 'Driver front door line', () => (red ? { rgb: [255, 0, 0], bright: 100 } : { rgb: [0, 0, 0], bright: 0 }));
+        await sleep(150);
+        writes.length = 0; red = false;
+        await sleep(200);
+        ok(writes.some((w) => w[0] === 0xe3 && w[2] === 3 && w[4] === 0), 'a pulse with the car\'s colour on: its next step written after a quiet spell');
+        lights.overlay('doors', null);
+        await sleep(300);
+    }
     // an overlay with the car's own colour on: only the lights it picks are written, the rest keep the car's colour
     writes.length = 0;
     lights.overlay('doors', (l) => l.name === 'Driver front door line', () => ({ rgb: [255, 0, 0], bright: 100 }));

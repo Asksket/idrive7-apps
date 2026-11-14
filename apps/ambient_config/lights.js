@@ -409,7 +409,8 @@ class Lights extends EventEmitter {
                     // all written: a still colour (or giving back) read back once a little later
                     if (this._checks > 0 && !this._checkAt) { this._checks--; this._checkAt = this.now() + (this.checkMs || CHECK_MS); }
                     // nothing due: a moving scene looks again soon, a still one when its next renewal is due
-                    const moving = S.moves(this.scene) || !!(this._flash && this.now() < this._flash.until);
+                    // (an overlay changes on its own time, a door's pulse: looked at again soon too, also with no scene of ours)
+                    const moving = S.moves(this.scene) || !!(this._flash && this.now() < this._flash.until) || !!(this._overs && this._overs.size);
                     const next = this._checkAt ? Math.max(20, this._checkAt - this.now()) : moving ? 40 : 1000;
                     if (this.scene || moving || this._checkAt) this._timer = setTimeout(() => this._kick(), next);
                     return;
