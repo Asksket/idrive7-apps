@@ -15,7 +15,7 @@
  * renewed; someone back in (living, ignition, driving): the look again, with the welcome sweep when it is on.
  * Over the look (or the car's own colour), with their settings switched on (both off by default): turn(side) - while a turn signal is on, that side's
  * door lines blink green, fully on and off, as fast as the lights take it (setting turnGlow; hazards: both sides; not with
- * the car locked and left); doors(open) - an open door's line blinks red until it closes (setting doorRed; not with
+ * the car locked and left); doors(open) - every light of an open door blinks red until it closes (setting doorRed; not with
  * the car locked and left, so a door left open does not keep the body module awake); with the hazards on (setting
  * hazardRed) every light pulses red, bright then dim, in place of the turn glow (not with the car locked and left). Left is
  * the driver's side on a left-hand drive car.
@@ -41,8 +41,8 @@ const doorOf = (l) => {
     if (/ front door/.test(n) || / rear door/.test(n)) return side + (/ front door/.test(n) ? ' front' : ' rear');
     return side + (l.y < 0.5 ? ' front' : ' rear');        // the door's backlit decor: by where it sits
 };
-/* A door's line light. The turn glow and an open door's red blink only these (one write each a frame, ~2.4 blinks a
- * second on the car against ~0.8 with every light of a side); a car whose side or door has none blinks all of them. */
+/* A door's line light. The turn glow blinks only these (one write each a frame, ~2.4 blinks a second on the car against
+ * ~0.8 with every light of a side); a car whose side has none blinks all of them. An open door blinks all its lights. */
 const isLine = (l) => / door line$/i.test(String(l.name || ''));
 const linesOf = (all, pick) => (l) => pick(l) && (isLine(l) || !all().some((x) => pick(x) && isLine(x)));
 
@@ -136,7 +136,8 @@ class Control {
         const doors = this.settings.get('doorRed') === true && !this._away ? this._doors : [];
         if (doors.join() !== this._red) {
             this._red = doors.join();
-            this.lights.overlay('doors', doors.length ? linesOf(all, (l) => doors.indexOf(doorOf(l)) >= 0) : null, blink(RED));
+            // every light of an open door (its line, decor, handle and pocket), not only its line
+            this.lights.overlay('doors', doors.length ? (l) => doors.indexOf(doorOf(l)) >= 0 : null, blink(RED));
         }
     }
 

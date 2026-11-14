@@ -131,8 +131,9 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     writes.length = 0;
     lights.reassert([30, 80]);
     await sleep(200);
-    ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.filter((w) => w[2] === 0).length >= 2,
-        'reassert: every light written anew, NAD 0 each time (' + writes.length + ' writes)');
+    ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.length >= 12 && writes.every((w) => w[2] !== 0),
+        'reassert: every light written anew, each on its own, no colour on the whole bus first (' + writes.length + ' writes)');
+    lights._perLightTill = 0;
     // the zone test: each light on its own (no NAD 0), then read back; a light the body module drops: missed
     writes.length = 0; drop = { bus: 1, nad: 2 }; lit[1][1] = [0, 254, 0];
     const tr = await lights.test();
@@ -348,8 +349,8 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     ok(fake.overs.turn.test(pl(0x05)) && fake.overs.turn.test(pl(0x09)) && !fake.overs.turn.test(pl(0x07)) && !fake.overs.turn.test(pl(0x0b))
         && !fake.overs.turn.test(pl(0x0c)), 'door lines on the car: the turn glow blinks the driver\'s front and rear door lines only');
     c.doors(['passenger rear']);
-    ok(fake.overs.doors.test(pl(0x10)) && !fake.overs.doors.test(pl(0x12)) && !fake.overs.doors.test(pl(0x22)) && !fake.overs.doors.test(pl(0x0c)),
-        'door lines on the car: an open door blinks its own line only');
+    ok(fake.overs.doors.test(pl(0x10)) && fake.overs.doors.test(pl(0x12)) && fake.overs.doors.test(pl(0x22)) && fake.overs.doors.test(pl(0x11)) && !fake.overs.doors.test(pl(0x0c)),
+        'an open door blinks all its lights (line, decor, pocket, handle), not another door\'s');
     c.doors([]); c.doors(['driver front']);
     fake.lights = fake.lights.filter((l) => l.loc !== 0x05);
     ok(fake.overs.doors.test(pl(0x07)) && fake.overs.doors.test(pl(0x08)), 'a door without its line: its other lights blink');

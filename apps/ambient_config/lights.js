@@ -32,7 +32,8 @@ const CHECK_MS = 1500;         // a still colour's read-back, this long after it
 const HOLD_WAIT_MS = 3000;     // hold(): the longest it waits for a write (or read-back) of ours under way
 // the zone test's colours: green above, purple below, unlike most looks, so the change shows in the car
 const TEST_UPPER = [0, 254, 0], TEST_LOWER = [160, 0, 254];
-const REASSERT_MS = [1500, 4000, 8000];   // reassert(): a new driving mode's rewrites, this long after it
+const REASSERT_MS = [1000, 2500, 4500, 7000];
+const PER_LIGHT_MS = 9000;   // reassert(): this long, each light written on its own (no colour on the whole bus first)   // reassert(): a new driving mode's rewrites, this long after it
 
 const echo = (sid, did) => (u) => (u[0] === sid + 0x40 && u[1] === did[0] && u[2] === did[1]) || (u[0] === 0x7f && u[1] === sid);
 const hex = (b) => Array.prototype.map.call(b || [], (x) => ('0' + (x & 0xff).toString(16).toUpperCase()).slice(-2)).join(' ');
@@ -181,6 +182,9 @@ class Lights extends EventEmitter {
      */
     reassert(delays) {
         this._reTimers = this._reTimers || [];
+        // written light by light meanwhile: a whole-bus write of the colour most lights want first would flash the
+        // others in it (all red, then the lower ones blue again) at every rewrite
+        this._perLightTill = this.now() + PER_LIGHT_MS;
         (delays || REASSERT_MS).forEach((d) => {
             const tm = setTimeout(() => {
                 this._reTimers = this._reTimers.filter((x) => x !== tm);
@@ -314,7 +318,7 @@ class Lights extends EventEmitter {
             wants.forEach((w) => { count[key(w)] = (count[key(w)] || 0) + 1; });
             const top = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
             // (NAD 0 reaches every light of the bus: only when all of them take a colour of ours)
-            const most = on.length === all.length && count[top] > 1 ? wants.find((w) => key(w) === top) : null;
+            const most = on.length === all.length && count[top] > 1 && !(this.now() < (this._perLightTill || 0)) ? wants.find((w) => key(w) === top) : null;
             if (most) items.push({ lights: on, need: on.filter((l, i) => key(wants[i]) === top), want: most, nad: ALL });
             on.forEach((l, i) => { if (!most || key(wants[i]) !== top) items.push({ lights: [l], need: [l], want: wants[i], nad: l.nad }); });
         }
