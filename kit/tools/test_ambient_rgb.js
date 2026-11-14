@@ -119,6 +119,27 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     const want = [['0,0,254', '254,0,0'], ['254,0,0', '0,0,254', '254,0,0', '254,0,0']];
     ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.length === 3,
         'recheck: read back, the upper lights red again, the lower ones blue, only what differs written (' + writes.length + ' writes)');
+    // reassert (a new driving mode): every light written again after each delay, also with a read-back that sees nothing
+    lit[0].forEach((x, i) => { lit[0][i] = [0, 0, 254]; }); lit[1].forEach((x, i) => { lit[1][i] = [0, 0, 254]; });
+    writes.length = 0;
+    lights.reassert([30, 80]);
+    await sleep(200);
+    ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.filter((w) => w[2] === 0).length >= 2,
+        'reassert: every light written anew, NAD 0 each time (' + writes.length + ' writes)');
+    // the zone test: each light on its own (no NAD 0), then read back; a light the body module drops: missed
+    writes.length = 0; drop = { bus: 1, nad: 2 }; lit[1][1] = [0, 254, 0];
+    const tr = await lights.test();
+    ok(tr.length === 6 && writes.every((w) => w[2] !== 0) && writes.length === 6, 'zone test: one write a light, by its NAD');
+    const fw2 = tr.find((r) => r.light.bus === 1 && r.light.nad === 2), dash = tr.find((r) => r.light.bus === 1 && r.light.nad === 1);
+    ok(fw2 && fw2.reply === '6E' && !fw2.ok && dash.ok && dash.want.join() === '254,0,0' && tr.filter((r) => r.ok).length === 5,
+        'zone test: upper red, lower blue, the dropped one missed');
+    ok(lights.tested && lights.tested.results === tr && !lights.held, 'zone test: kept for the Check tab, the writing goes on');
+    await sleep(300);
+    ok(lit[1][1].join() === '0,0,254' && lit[1][0].join() === '254,0,0', 'after the zone test: the look written again');
+    lit[1][3] = [9, 9, 9];
+    const rb = await lights.readBack();
+    ok(rb.find((l) => l.bus === 1 && l.nad === 4).rgb.join() === '9,9,9' && lights.readAt > 0 && !lights.held, 'read lights: the colours as the body module reports them');
+    await sleep(300);
     lights.show(look('breathing')); lights.recheck(3);
     ok(lights._checks === 0, 'recheck: nothing to read back for a moving look (written over and over anyway)');
     lights.show(look('solid'));
@@ -202,7 +223,7 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     const settings = { get: (k) => values[k], set: (k, v) => { values[k] = v; fns.forEach((f) => f(k, v)); }, onChange: (f) => fns.push(f) };
     const shows = [];
     const fake = { scene: null, overs: {}, show(s) { this.scene = s; shows.push(s); }, carColour() { this.scene = null; shows.push(null); }, dim(f) { this.f = f; }, flash(rgb, ms) { this.flashed = [rgb, ms]; },
-        overlay(k, test, at) { if (test) this.overs[k] = { test, at }; else delete this.overs[k]; }, recheck(n) { this.rechecks = (this.rechecks || 0) + 1; } };
+        overlay(k, test, at) { if (test) this.overs[k] = { test, at }; else delete this.overs[k]; }, recheck(n) { this.rechecks = (this.rechecks || 0) + 1; }, reassert() { this.reasserts = (this.reasserts || 0) + 1; } };
     const amb = new EventEmitter(); amb._m = 'comfort'; amb.mode = () => amb._m;
     const c = new Control({ settings, lights: fake, ambient: amb, log });
     c.start();
@@ -212,10 +233,11 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     c.setModeLook('sport', look('breathing'));
     amb._m = 'sport'; amb.emit('change');
     ok(fake.scene.kind === 'pulse' && fake.scene.then.kind === 'breathing', 'Sport picked: the pulse, then Sport\'s look');
-    const rc = fake.rechecks || 0;
+    const rc = fake.rechecks || 0, ra = fake.reasserts || 0;
     amb._m = 'comfort'; amb.emit('change');
     ok(fake.scene.kind === 'solid' && fake.scene.upper.rgb.join() === '0,255,0', 'Comfort (Leave as is): the driver\'s look back');
     ok(fake.rechecks === rc + 1, 'a new driving mode: the lights read back (the car may have put its own colour on)');
+    ok(fake.reasserts === ra + 1, 'a new driving mode: every light written again over the next seconds');
     settings.set('follow', false); c.apply();
     amb._m = 'sport'; amb.emit('change');
     ok(fake.scene.upper.rgb.join() === '0,255,0' && fake.scene.kind !== 'breathing', 'not following: the driver\'s look in Sport too');

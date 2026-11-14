@@ -12,6 +12,9 @@
  *                  look until Done), the animation button stepping through them, or Original colour (BMW's); with
  *                  nothing chosen, the Colour tab's colour; welcome sweep, Sport pulse, Redline's shift flash
  *   Favourites     six saved looks: tap to put one on
+ *   Check          what the body controller reports: every light it has (bus, NAD, location code, name, upper or
+ *                  lower, the colour it reads), the driving mode, the last errors; Read lights reads them again,
+ *                  Zone test writes each light on its own (upper red, lower blue, 30 s) and reads back which took it
  * Everything goes to the car as it is picked. The lights are driven through the body controller (lights.js); a car
  * whose body controller does not answer keeps BMW's own colours (ambient.js), offered on the Colour tab.
  * It runs from the platform's start (app.json "autostart"): the look and the driving modes work with the app closed.
@@ -59,7 +62,15 @@ const doorsOf = (v) => Object.keys(DOOR_FIELDS).filter((k) => v && (v[k] === 1 |
 const DAY_NIGHT = { KEINE_AENDERUNG: 0, TAG: 1, NACHT: 2, SIGNAL_UNGUELTIG: 3 };
 
 async function background(bg) {
-    const { settings, signals, log } = bg;
+    const { settings, signals } = bg;
+    // the last lines logged, for the Check tab
+    const recent = [];
+    const keep = (lvl) => (m) => {
+        recent.push(new Date().toTimeString().slice(0, 8) + ' ' + m);
+        while (recent.length > 40) recent.shift();
+        return bg.log[lvl](m);
+    };
+    const log = Object.assign(Object.create(bg.log), { info: keep('info'), warn: keep('warn') });
     const ambient = new Ambient({ settings, signals, log });
     await ambient.start();
     const diag = await new Diag(signals, log).init();
@@ -132,7 +143,7 @@ async function background(bg) {
     findStrobe();
     settings.onChange((key) => { if (key === 'strobe') { if (settings.get('strobe') === true) findStrobe(); else strobe.stop(); } });
     // (the car locked and left mid-flash: the gate says no at the next step and the strobe stops)
-    return { ambient, lights, control, active, others, strobe, checks };
+    return { ambient, lights, control, active, others, strobe, checks, recent };
 }
 
 const nearest = (rgb) => {
@@ -149,9 +160,9 @@ mgu.run({
     background,
     async start(ctx) {
         const { ui, settings, log } = ctx;
-        const { ambient, lights, control, active, others, strobe, checks } = ctx.background || await background(ctx);
-        // the Strobe tab only with its experimental setting on
-        const tabs = () => TABS.concat(settings.get('strobe') === true ? ['Strobe'] : []);
+        const { ambient, lights, control, active, others, strobe, checks, recent } = ctx.background || await background(ctx);
+        // the Strobe tab only with its experimental setting on; Check last
+        const tabs = () => TABS.concat(settings.get('strobe') === true ? ['Strobe'] : [], ['Check']);
         // editing: null (the driver's own look) or a driving mode whose look the Colour and Animations tabs change
         let page = 0, part = 'all', dirty = true, editing = null;
         const T0 = Date.now();
@@ -457,10 +468,62 @@ mgu.run({
             }, { primary: showing, key: 'show-go', confirm: !showing, busy: !strobe || !strobe.kind || strobe.running === 'strobe' || strobe.running === 'learn' });
         }
 
+        /*
+         * Check: what the body controller says, for finding out why a car's lights do not do what the app shows.
+         * Left: the app's version, the lights found, the driving mode, the errors, Read lights and Zone test, the last
+         * lines logged. Right: every light - bus and NAD, location code, name, U(pper) or L(ower), the colour read, and
+         * after a zone test whether it took its colour (6E answered and read back), refused it, or missed it.
+         */
+        let checking = null;
+        const VERSION = (ctx.spec && ctx.spec.version) || '?';
+        function drawCheck(cv, t) {
+            G.panel(cv, t, 24, 44, 560, 468, 'Check');
+            const n = lights.lights.length, on = (b) => lights.lights.filter((l) => l.bus === b).length;
+            const lit = (s, y, c) => cv.text(s, 44, y, 18, c || t.text, { literal: true });
+            lit('Ambient Config ' + VERSION, 114, t.dim);
+            lit('Lights: ' + (lights.state === 'finding' ? 'looking...' : n ? n + ' (bus 1: ' + on(0) + ', bus 2: ' + on(1) + ')' : 'none answered'), 142);
+            lit('State: ' + lights.state + (lights.held ? ', held' : '') + ' · writes: ' + lights.writes, 166);
+            lit('Driving mode: ' + (ambient.mode() || 'not reported') + ' · following: ' + (settings.get('follow') !== false ? 'yes' : 'no'), 190);
+            lit('BMW colour slot: ' + (ambient.slot() || '-') + ' · IterioDev Comfort: ' + (others.comfort ? 'RUNNING' : 'no'), 214, others.comfort ? t.warn : null);
+            if (lights.error) lit('Error: ' + lights.error, 238, t.warn);
+            const tr = lights.tested;
+            if (tr) {
+                const took = tr.results.filter((r) => r.ok).length, ans = tr.results.filter((r) => r.reply === '6E').length;
+                lit('Zone test: ' + took + ' of ' + tr.results.length + ' took it, ' + ans + ' answered 6E', 262, took === tr.results.length ? t.text : t.warn);
+            }
+            G.button(cv, t, 44, 280, 240, 46, checking === 'read' ? 'Reading...' : 'Read lights', () => {
+                checking = 'read';
+                lights.readBack().catch((e) => log.warn('lights: ' + e)).then(() => { checking = null; dirty = true; });
+                return redraw();
+            }, { key: 'chk-read', busy: !!checking || !n });
+            G.button(cv, t, 300, 280, 264, 46, checking === 'test' ? 'Testing...' : 'Zone test', () => {
+                checking = 'test';
+                lights.test().catch((e) => log.warn('lights: ' + e)).then(() => { checking = null; dirty = true; });
+                return redraw();
+            }, { key: 'chk-test', busy: !!checking || !n, confirm: true });
+            cv.text('Zone test: upper lights red, lower blue, 30 s.', 44, 350, 15, t.dim);
+            recent.slice(-7).forEach((l, i) => cv.text(l.length > 66 ? l.slice(0, 65) + '…' : l, 44, 378 + i * 19, 14, t.dim, { literal: true }));
+
+            G.panel(cv, t, 600, 44, 976, 468, 'Lights as the body module reports them');
+            if (!n) return cv.text(lights.state === 'finding' ? 'Asking the body module...' : 'The body module did not answer: no lights to show.', 620, 112, 20, t.warn);
+            const res = (l) => (tr ? tr.results.find((r) => r.light.bus === l.bus && r.light.nad === l.nad) : null);
+            const hx = (v) => ('0' + v.toString(16).toUpperCase()).slice(-2);
+            lights.lights.slice(0, 44).forEach((l, i) => {
+                const x = 616 + Math.floor(i / 22) * 484, y = 116 + (i % 22) * 17.5;
+                cv.text(l.bus + 1 + '·' + l.nad, x, y, 15, t.dim, { literal: true });
+                cv.text(hx(l.loc), x + 40, y, 15, t.dim, { literal: true });
+                cv.text(l.name.length > 25 ? l.name.slice(0, 24) + '…' : l.name, x + 70, y, 15, t.text, { literal: true });
+                cv.text(l.part === 'upper' ? 'U' : 'L', x + 270, y, 15, l.part === 'upper' ? t.text : t.accent, { literal: true, font: 'bold' });
+                if (l.rgb) { cv.roundRect(x + 290, y - 12, 14, 14, 3, l.rgb.map((v) => Math.min(255, v))); cv.text(l.rgb.join(','), x + 310, y, 14, t.dim, { literal: true }); }
+                const r = res(l);
+                if (r) cv.text(r.ok ? 'ok' : r.reply !== '6E' ? r.reply : 'MISSED', x + 400, y, 14, r.ok ? t.text : t.warn, { literal: true, font: 'bold' });
+            });
+        }
+
         async function render() {
             const t = ctx.theme(), cv = ctx.canvas(W, H).clear(t.bg);
             if (page >= tabs().length) page = 0;
-            [drawColour, drawAnimations, drawModes, drawFavs, drawStrobe][page](cv, t);
+            ({ Colour: drawColour, Animations: drawAnimations, 'Driving modes': drawModes, Favourites: drawFavs, Strobe: drawStrobe, Check: drawCheck })[tabs()[page]](cv, t);
             G.frame(cv, t, tabs(), page, []);
             dirty = false;
             await ui.image('MAIN_GFX', cv);
@@ -469,7 +532,7 @@ mgu.run({
         const tick = () => {
             const moving = (lights.scene && S.moves(lights.scene)) || (page === 1 && control.on() && S.moves(look()));
             // (the Strobe tab: its checks follow the car, so it draws on each tick)
-            return dirty || (moving && page <= 1) || page === 4 ? render() : null;
+            return dirty || (moving && page <= 1) || tabs()[page] === 'Strobe' ? render() : null;
         };
 
         if (ctx.onTap) {

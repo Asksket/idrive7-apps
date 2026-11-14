@@ -30,8 +30,10 @@ const PAUSE_MS = 10000, FAILS = 4, RELEASE_TRIES = 3;
 const ALL = 0;                 // NAD 0: every light of the bus
 const CHECK_MS = 1500;         // a still colour's read-back, this long after its last write
 const HOLD_WAIT_MS = 3000;     // hold(): the longest it waits for a write (or read-back) of ours under way
+const REASSERT_MS = [1500, 4000, 8000];   // reassert(): a new driving mode's rewrites, this long after it
 
 const echo = (sid, did) => (u) => (u[0] === sid + 0x40 && u[1] === did[0] && u[2] === did[1]) || (u[0] === 0x7f && u[1] === sid);
+const hex = (b) => Array.prototype.map.call(b || [], (x) => ('0' + (x & 0xff).toString(16).toUpperCase()).slice(-2)).join(' ');
 const same = (a, b) => !!a && !!b && Math.abs(a.bright - b.bright) < 2 && a.rgb.every((x, i) => Math.abs(x - b.rgb[i]) < 3);
 
 class Lights extends EventEmitter {
@@ -160,7 +162,91 @@ class Lights extends EventEmitter {
         this._kick();
     }
 
-    stop() { this._stopped = true; clearTimeout(this._timer); clearTimeout(this._onceTimer); }
+    /**
+     * Every light written anew after each of these delays (a still colour of ours only): the car puts its own colour
+     * on by itself on a new driving mode, sometimes seconds after our write, and the read-back cannot be trusted to see
+     * it on every car. A whole-car colour is two writes, so this costs little.
+     */
+    reassert(delays) {
+        this._reTimers = this._reTimers || [];
+        (delays || REASSERT_MS).forEach((d) => {
+            const tm = setTimeout(() => {
+                this._reTimers = this._reTimers.filter((x) => x !== tm);
+                if (this._stopped || !this.scene || S.moves(this.scene) || !this.lights.length) return;
+                this._last.clear(); this._frame = null;
+                this._kick();
+            }, d);
+            this._reTimers.push(tm);
+        });
+    }
+
+    /**
+     * Reads both buses (the Check tab): each light's colour as the body controller reports it. The writing waits
+     * meanwhile. -> the lights, with rgb, bright, fault as read; readAt the time.
+     */
+    async readBack() {
+        await this.hold('read', true);
+        try {
+            for (let bus = 0; bus < BUSES.length; bus++) {
+                let st = null;
+                try { st = await this.diag.physical(BDC, 0x22, BUSES[bus].read, 15000, echo(0x22, BUSES[bus].read), { pendingTimeoutMs: 15000 }); } catch (e) { this.error = String(e && e.message || e); }
+                const mods = st ? parseStatus(bus, st) : null;
+                (mods || []).forEach((m) => {
+                    const l = this.lights.find((x) => x.bus === bus && x.nad === m.nad);
+                    if (l) { l.rgb = m.rgb; l.bright = m.bright; l.fault = m.fault; l.loc = m.loc; }
+                });
+                if (!mods && st) this.log.info('lights: bus ' + (bus + 1) + ' read refused (' + hex(st.slice(0, 3)) + ')');
+            }
+            this.readAt = this.now();
+        } finally { this.hold('read', false); }
+        this.emit('change');
+        return this.lights;
+    }
+
+    /**
+     * The zone test (Check tab): every light written on its own, by its NAD (no NAD 0 to the whole bus): the upper
+     * lights one colour, the lower ones another, held 30 s; then both buses read back. Tells apart a light the car
+     * did not take from one it did, and which lights are upper and lower. The scene's writing waits meanwhile and
+     * starts again after, every light written anew.
+     * -> [{ light, want, reply ('6E' | '7F 2E 31' | an error), back ([r, g, b] read | null), ok }]; also this.tested.
+     */
+    async test(o) {
+        o = o || {};
+        const upper = o.upper || [254, 0, 0], lower = o.lower || [0, 0, 254];
+        const out = [];
+        await this.hold('test', true);
+        try {
+            for (let i = 0; i < this.lights.length; i++) {
+                const l = this.lights[i], want = l.part === 'upper' ? upper : lower, frame = writeFrame(l.bus, l.nad, want, 100, 30);
+                let reply = null, err = null;
+                try { reply = await this.diag.physical(BDC, 0x2e, frame, 1500, echo(0x2e, frame), { retryBaseMs: 20, maxRetries: 10 }); } catch (e) { err = String(e && e.message || e); }
+                out.push({ light: l, want, reply: reply ? (reply[0] === 0x6e ? '6E' : hex(reply.slice(0, 3))) : err || 'no answer', back: null, ok: false });
+            }
+            await new Promise((r) => setTimeout(r, this.checkMs || CHECK_MS));
+            for (let bus = 0; bus < BUSES.length; bus++) {
+                if (!out.some((x) => x.light.bus === bus)) continue;
+                let st = null;
+                try { st = await this.diag.physical(BDC, 0x22, BUSES[bus].read, 15000, echo(0x22, BUSES[bus].read), { pendingTimeoutMs: 15000 }); } catch (e) { /* none */ }
+                (st ? parseStatus(bus, st) || [] : []).forEach((m) => {
+                    const r = out.find((x) => x.light.bus === bus && x.light.nad === m.nad);
+                    if (!r) return;
+                    r.back = m.rgb; r.light.rgb = m.rgb; r.light.bright = m.bright;
+                    r.ok = r.want.every((v, j) => Math.abs(v - m.rgb[j]) < 3);
+                });
+            }
+            this.log.info('lights: zone test ' + out.map((x) => 'B' + (x.light.bus + 1) + '#' + x.light.nad + '/' + hex([x.light.loc]) + ' ' + x.light.part
+                + ' ' + x.reply + ' ' + (x.back ? x.back.join(',') : '-') + (x.ok ? ' ok' : ' MISSED')).join('; '));
+        } finally {
+            this._last.clear(); this._frame = null;
+            this.hold('test', false);
+        }
+        this.tested = { at: this.now(), results: out };
+        this.readAt = this.now();
+        this.emit('change');
+        return out;
+    }
+
+    stop() { this._stopped = true; clearTimeout(this._timer); clearTimeout(this._onceTimer); (this._reTimers || []).forEach((t) => clearTimeout(t)); }
 
     /** Every bus with a light of ours on it given back (one write each), then read back once. */
     _giveBack() {
@@ -328,4 +414,4 @@ class Lights extends EventEmitter {
     }
 }
 
-module.exports = { Lights, HOLD_S, RENEW_MS, MOVE_HOLD_S };
+module.exports = { Lights, HOLD_S, RENEW_MS, MOVE_HOLD_S, REASSERT_MS };

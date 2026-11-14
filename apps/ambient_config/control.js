@@ -91,8 +91,9 @@ class Control {
             return;
         }
         this.apply();
-        // the car changes the lights itself on a new driving mode (its own colour), sometimes after our write: read
-        // them back in the next seconds, so the look is written again at once rather than at its next renewal
+        // the car changes the lights itself on a new driving mode (its own colour), sometimes seconds after our write:
+        // every light written again a few times in the next seconds, and read back, rather than at the next renewal
+        if (this.lights.reassert) this.lights.reassert();
         this.lights.recheck(3);
     }
 
