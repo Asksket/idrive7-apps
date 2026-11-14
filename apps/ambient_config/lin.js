@@ -18,24 +18,26 @@ const BUSES = [
 ];
 const RECORD = 10, RECORDS = 26;
 
-// A light's place: its name, upper (lines and decor) or lower (footwells, handles, pockets, trays), and where it
+// A light's place: its name, upper (the lines: the top strip of the dash and each door, pillars, roof, light blades) or
+// lower (the decor strips under the lines, footwells, handles, pockets, trays: what BMW's own two-colour light gives
+// the second colour, issue #140), and where it
 // sits on the cabin picture (x across from the driver's side 0 to the passenger's side 1, y from the dash 0 to
 // the boot 1; a line from x,y to x2,y2). Left-hand drive; the picture mirrors for right-hand drive.
 const D = 'driver', P = 'passenger';
 const PLACES = {
     0x01: ['Footwell driver front', 'lower', 0.29, 0.215], 0x02: ['Footwell driver rear', 'lower', 0.29, 0.54],
     0x03: ['Footwell passenger front', 'lower', 0.71, 0.215], 0x04: ['Footwell passenger rear', 'lower', 0.71, 0.54],
-    0x05: ['Driver front door line', 'upper', 0.06, 0.24, 0.06, 0.46], 0x06: ['Driver front door decor', 'upper', 0.08, 0.26, 0.08, 0.44],
+    0x05: ['Driver front door line', 'upper', 0.06, 0.24, 0.06, 0.46], 0x06: ['Driver front door decor', 'lower', 0.08, 0.26, 0.08, 0.44],
     0x07: ['Driver front door handle', 'lower', 0.09, 0.36], 0x08: ['Driver front door pocket', 'lower', 0.09, 0.44],
-    0x09: ['Driver rear door line', 'upper', 0.06, 0.54, 0.06, 0.74], 0x0a: ['Driver rear door decor', 'upper', 0.08, 0.56, 0.08, 0.72],
+    0x09: ['Driver rear door line', 'upper', 0.06, 0.54, 0.06, 0.74], 0x0a: ['Driver rear door decor', 'lower', 0.08, 0.56, 0.08, 0.72],
     0x0b: ['Driver rear door pocket', 'lower', 0.09, 0.72],
-    0x0c: ['Passenger front door line', 'upper', 0.94, 0.24, 0.94, 0.46], 0x0d: ['Passenger front door decor', 'upper', 0.92, 0.26, 0.92, 0.44],
+    0x0c: ['Passenger front door line', 'upper', 0.94, 0.24, 0.94, 0.46], 0x0d: ['Passenger front door decor', 'lower', 0.92, 0.26, 0.92, 0.44],
     0x0e: ['Passenger front door handle', 'lower', 0.91, 0.36], 0x0f: ['Passenger front door pocket', 'lower', 0.91, 0.44],
-    0x10: ['Passenger rear door line', 'upper', 0.94, 0.54, 0.94, 0.74], 0x11: ['Passenger rear door decor', 'upper', 0.92, 0.56, 0.92, 0.72],
+    0x10: ['Passenger rear door line', 'upper', 0.94, 0.54, 0.94, 0.74], 0x11: ['Passenger rear door decor', 'lower', 0.92, 0.56, 0.92, 0.72],
     0x12: ['Passenger rear door pocket', 'lower', 0.91, 0.72],
-    0x13: ['Dash line driver', 'upper', 0.10, 0.15, 0.37, 0.15], 0x14: ['Dash decor driver', 'upper', 0.10, 0.17, 0.37, 0.17],
-    0x15: ['Dash line centre', 'upper', 0.39, 0.15, 0.61, 0.15], 0x16: ['Dash decor centre', 'upper', 0.39, 0.17, 0.61, 0.17],
-    0x17: ['Dash line passenger', 'upper', 0.63, 0.15, 0.90, 0.15], 0x18: ['Dash decor passenger', 'upper', 0.63, 0.17, 0.90, 0.17],
+    0x13: ['Dash line driver', 'upper', 0.10, 0.15, 0.37, 0.15], 0x14: ['Dash decor driver', 'lower', 0.10, 0.17, 0.37, 0.17],
+    0x15: ['Dash line centre', 'upper', 0.39, 0.15, 0.61, 0.15], 0x16: ['Dash decor centre', 'lower', 0.39, 0.17, 0.61, 0.17],
+    0x17: ['Dash line passenger', 'upper', 0.63, 0.15, 0.90, 0.15], 0x18: ['Dash decor passenger', 'lower', 0.63, 0.17, 0.90, 0.17],
     0x19: ['B-pillar driver', 'upper', 0.05, 0.50], 0x1a: ['B-pillar passenger', 'upper', 0.95, 0.50],
     0x1b: ['Driver seat back', 'lower', 0.30, 0.47], 0x1c: ['Passenger seat back', 'lower', 0.70, 0.47],
     0x1d: ['Centre stack tray', 'lower', 0.50, 0.22], 0x1e: ['Console tray', 'lower', 0.50, 0.42],
@@ -43,8 +45,8 @@ const PLACES = {
     0x21: ['Driver rear door handle', 'lower', 0.09, 0.64], 0x22: ['Passenger rear door handle', 'lower', 0.91, 0.64],
     0x2b: ['Console line driver front', 'upper', 0.44, 0.24, 0.44, 0.40], 0x2c: ['Console line driver rear', 'upper', 0.44, 0.42, 0.44, 0.52],
     0x2d: ['Console line passenger front', 'upper', 0.56, 0.24, 0.56, 0.40], 0x2e: ['Console line passenger rear', 'upper', 0.56, 0.42, 0.56, 0.52],
-    0x2f: ['Console decor driver front', 'upper', 0.45, 0.26, 0.45, 0.38], 0x30: ['Console decor driver rear', 'upper', 0.45, 0.44, 0.45, 0.50],
-    0x31: ['Console decor passenger front', 'upper', 0.55, 0.26, 0.55, 0.38], 0x32: ['Console decor passenger rear', 'upper', 0.55, 0.44, 0.55, 0.50],
+    0x2f: ['Console decor driver front', 'lower', 0.45, 0.26, 0.45, 0.38], 0x30: ['Console decor driver rear', 'lower', 0.45, 0.44, 0.45, 0.50],
+    0x31: ['Console decor passenger front', 'lower', 0.55, 0.26, 0.55, 0.38], 0x32: ['Console decor passenger rear', 'lower', 0.55, 0.44, 0.55, 0.50],
     0x33: ['Driver seat back, 2nd row', 'lower', 0.30, 0.78], 0x34: ['Passenger seat back, 2nd row', 'lower', 0.70, 0.78],
     0x35: ['Sunroof front left', 'upper', 0.30, 0.34], 0x36: ['Sunroof front left rear', 'upper', 0.30, 0.42],
     0x37: ['Sunroof front right', 'upper', 0.70, 0.34], 0x38: ['Sunroof front right rear', 'upper', 0.70, 0.42],
@@ -55,9 +57,9 @@ const PLACES = {
 };
 // the doors' backlit decor (0x3F-0x46) and the console's (0x47-0x4A)
 [[0x3f, D, 0.28], [0x40, D, 0.40], [0x41, D, 0.58], [0x42, D, 0.70], [0x43, P, 0.28], [0x44, P, 0.40], [0x45, P, 0.58], [0x46, P, 0.70]]
-    .forEach(([c, side, y]) => { PLACES[c] = [(side === D ? 'Driver' : 'Passenger') + ' door backlit decor', 'upper', side === D ? 0.07 : 0.93, y]; });
+    .forEach(([c, side, y]) => { PLACES[c] = [(side === D ? 'Driver' : 'Passenger') + ' door backlit decor', 'lower', side === D ? 0.07 : 0.93, y]; });
 [[0x47, 0.45, 0.30], [0x48, 0.45, 0.46], [0x49, 0.55, 0.30], [0x4a, 0.55, 0.46]]
-    .forEach(([c, x, y]) => { PLACES[c] = ['Console backlit decor', 'upper', x, y]; });
+    .forEach(([c, x, y]) => { PLACES[c] = ['Console backlit decor', 'lower', x, y]; });
 
 /** A location code -> { loc, name, part, x, y, x2, y2 } (an unknown code: a lower light in the middle). */
 function place(loc) {
