@@ -138,6 +138,7 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
         'reassert, the whole look: the majority on the whole bus at once, then the others (' + whole.map((w) => w[2]).join() + ')');
     await sleep(250);
     const each = writes.slice(whole.length);
+    ok(!require(path.join(A, 'lights')).REASSERT.whole, 'reassert by default: no whole-bus rewrite (on a G30 it turned the upper lights the lower colour and back)');
     ok(each.length >= 6 && each.every((w) => w[2] !== 0) && lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])),
         'reassert, then each light once more on its own, nothing on the whole bus (' + each.length + ' writes)');
     lights._perLightTill = 0;

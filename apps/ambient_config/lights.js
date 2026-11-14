@@ -32,7 +32,7 @@ const CHECK_MS = 1500;         // a still colour's read-back, this long after it
 const HOLD_WAIT_MS = 3000;     // hold(): the longest it waits for a write (or read-back) of ours under way
 // the zone test's colours: green above, purple below, unlike most looks, so the change shows in the car
 const TEST_UPPER = [0, 254, 0], TEST_LOWER = [160, 0, 254];
-const REASSERT = { whole: 4200, each: 6800 };   // reassert(): a new driving mode's rewrites, this long after it
+const REASSERT = { each: 3000 };   // reassert(): a new driving mode's check, this long after it (whole: none)
 const PER_LIGHT_MS = 6000;   // reassert(): this long, each light written on its own (no colour on the whole bus first)
 
 const echo = (sid, did) => (u) => (u[0] === sid + 0x40 && u[1] === did[0] && u[2] === did[1]) || (u[0] === 0x7f && u[1] === sid);
@@ -176,12 +176,11 @@ class Lights extends EventEmitter {
     }
 
     /**
-     * After a new driving mode (a still colour of ours only). The car puts its own colour on every light by itself then
-     * and takes no write of ours for about four seconds (seen on a G30: our colour came back only after that). So:
-     * the whole look written again at REASSERT.whole (one write a bus for the colour most lights want, then the
-     * others: all at once, the rest within about two seconds), then every light once more on its own at
-     * REASSERT.each (no whole-bus write: nothing flashes where the look already shows), then one read-back. No read-back
-     * before: a read takes seconds and holds the writes up. plan: { whole, each } ms (tests).
+     * After a new driving mode (a still colour of ours only): the look is written at once (show); the car may put its
+     * own colour on some lights by itself then. So every light once more on its own at REASSERT.each (no whole-bus
+     * write: nothing changes where the look already shows; on a G30 the look was on within 2 s, and a whole-bus write
+     * after it turned the upper lights the lower colour and back), then one read-back. No read-back before: a read
+     * takes seconds and holds the writes up. plan: { whole (optional: the whole look again first), each } ms.
      */
     reassert(plan) {
         const p = plan || REASSERT;
@@ -199,7 +198,7 @@ class Lights extends EventEmitter {
             }, ms);
             this._reTimers.push(tm);
         };
-        step(p.whole, true);
+        if (p.whole != null) step(p.whole, true);
         step(p.each, false);
     }
 
