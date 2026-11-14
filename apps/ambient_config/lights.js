@@ -318,7 +318,11 @@ class Lights extends EventEmitter {
             wants.forEach((w) => { count[key(w)] = (count[key(w)] || 0) + 1; });
             const top = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
             // (NAD 0 reaches every light of the bus: only when all of them take a colour of ours)
-            const most = on.length === all.length && count[top] > 1 && !(this.now() < (this._perLightTill || 0)) ? wants.find((w) => key(w) === top) : null;
+            // ... and only when every light that wants another colour has to change anyway: else the whole-bus write
+            // would flash those in the majority's colour (a door blinking, a renewal) before their own write
+            const others = on.every((l, i) => key(wants[i]) === top || !same(wants[i], this._last.get(l)));
+            const most = on.length === all.length && count[top] > 1 && others && !(this.now() < (this._perLightTill || 0))
+                ? wants.find((w) => key(w) === top) : null;
             if (most) items.push({ lights: on, need: on.filter((l, i) => key(wants[i]) === top), want: most, nad: ALL });
             on.forEach((l, i) => { if (!most || key(wants[i]) !== top) items.push({ lights: [l], need: [l], want: wants[i], nad: l.nad }); });
         }

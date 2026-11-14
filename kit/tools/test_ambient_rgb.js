@@ -124,8 +124,8 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     await sleep(300);
     // (bus 1: 0x0f pocket lower, 0x0c door line upper; bus 2: 0x15 dash, 0x01 footwell lower, 0x05 and 0x13 lines)
     const want = [['0,0,254', '254,0,0'], ['254,0,0', '0,0,254', '254,0,0', '254,0,0']];
-    ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.length === 3,
-        'recheck: read back, the upper lights red again, the lower ones blue, only what differs written (' + writes.length + ' writes)');
+    ok(lit.every((b, i) => b.every((c, j) => c.join() === want[i][j])) && writes.length === 4 && writes.every((w) => w[2] !== 0),
+        'recheck: read back, the upper lights red again, each on its own (the footwell, still blue, not touched) (' + writes.length + ' writes)');
     // reassert (a new driving mode): every light written again after each delay, also with a read-back that sees nothing
     lit[0].forEach((x, i) => { lit[0][i] = [0, 0, 254]; }); lit[1].forEach((x, i) => { lit[1][i] = [0, 0, 254]; });
     writes.length = 0;
@@ -178,7 +178,9 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     writes.length = 0;
     lights.show(look('rainbow'));
     await sleep(60);
-    ok(writes.length >= 2 && writes.slice(0, 2).every((w) => w[2] === 0 && w.slice(5, 8).join() === writes[0].slice(5, 8).join()), 'rainbow: the whole car one colour, 2 writes a frame');
+    // (the first write may be the breathing's, under way when the rainbow was put on)
+    const rbw = writes.slice(0, 4).filter((w) => w[2] === 0);
+    ok(rbw.length >= 2 && rbw[0].slice(5, 8).join() === rbw[1].slice(5, 8).join() && rbw[0][0] !== rbw[1][0], 'rainbow: the whole car one colour, one write a bus');
     writes.length = 0;
     lights.show(look('wave'));
     await sleep(100);
@@ -219,6 +221,21 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     lights.overlay('doors', null); lights.overlay('turn', null);
     await sleep(300);
     ok(lit[0].concat(lit[1]).every((c) => c.join() === '0,0,0'), 'both taken off with the car\'s colour on: given back');
+
+    // a door blinking over a two-colour look (upper red, lower blue): only the door's light is written, never the whole
+    // bus, so the other lights keep their colours (the car: every light swapping red and blue while the door was open)
+    lights.show(look('solid'));
+    await sleep(300);
+    writes.length = 0;
+    const seen = [];
+    lights.overlay('doors', (l) => l.name === 'Driver front door line', (t, on) => (on ? { rgb: [255, 0, 0], bright: 100 } : { rgb: [0, 0, 0], bright: 0 }));
+    for (let i = 0; i < 20; i++) { await sleep(10); seen.push(lit[1][1].join()); }
+    ok(writes.length >= 3 && writes.every((w) => w[2] === 3) && seen.every((c) => c === '0,0,254'),
+        'a door blinking over upper red / lower blue: its light alone, the footwell stays blue (' + writes.map((w) => w[2]).join() + ')');
+    lights.overlay('doors', null);
+    await sleep(300);
+    lights.carColour();
+    await sleep(300);
 
     refuse = true; writes.length = 0;
     lights.show(look('solid', { upper: { rgb: [1, 2, 3], bright: 50 } }));
