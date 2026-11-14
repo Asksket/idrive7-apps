@@ -292,7 +292,11 @@ class Lights extends EventEmitter {
         }
         const now = this.now(), flashing = !!(this._flash && now < this._flash.until + 50), over = !!(this._overs && this._overs.size);
         if (!this.scene && !flashing && !over) return null;
-        const moving = S.moves(this.scene) || flashing || over, renew = moving ? MOVE_RENEW_MS : RENEW_MS, hold = moving ? MOVE_HOLD_S : HOLD_S;
+        // a light that changes (a moving scene, a flash, an overlay over it) is held a short time and renewed often; the
+        // others keep a still colour's long hold, so an open door's pulse doesn't renew every other light of the car
+        const sceneMoves = S.moves(this.scene) || flashing;
+        const overs = over ? Array.from(this._overs.values()) : [];
+        const fast = (lights) => sceneMoves || lights.some((l) => overs.some((o) => o.test(l)));
         for (let tries = 0; tries < 2; tries++) {
             if (!this._frame || !this._frame.todo.length) {
                 if (this._frame && this._frame.wrote) this._frames.push(now);
@@ -301,6 +305,7 @@ class Lights extends EventEmitter {
             }
             while (this._frame.todo.length) {
                 const it = this._frame.todo.shift();
+                const f = fast(it.lights), renew = f ? MOVE_RENEW_MS : RENEW_MS, hold = f ? MOVE_HOLD_S : HOLD_S;
                 const due = it.need.some((l) => { const had = this._last.get(l); return !same(it.want, had) || now - had.at > renew; });
                 if (!due) continue;
                 this._frame.wrote = true;
