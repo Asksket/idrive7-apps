@@ -14,7 +14,7 @@
  *   Favourites     six saved looks: tap to put one on
  *   Check          what the body controller reports: every light it has (bus, NAD, location code, name, upper or
  *                  lower, the colour it reads), the driving mode, the last errors; Read lights reads them again,
- *                  Zone test writes each light on its own (upper red, lower blue, 30 s) and reads back which took it
+ *                  Zone test writes each light on its own (upper green, lower purple, 30 s) and reads back which took it
  * Everything goes to the car as it is picked. The lights are driven through the body controller (lights.js); a car
  * whose body controller does not answer keeps BMW's own colours (ambient.js), offered on the Colour tab.
  * It runs from the platform's start (app.json "autostart"): the look and the driving modes work with the app closed.
@@ -513,7 +513,7 @@ mgu.run({
                 lights.test().catch((e) => log.warn('lights: ' + e)).then(() => { checking = null; dirty = true; });
                 return redraw();
             }, { key: 'chk-test', busy: !!checking || !n, confirm: true });
-            cv.text('Zone test: upper lights red, lower blue, 30 s.', 44, 350, 15, t.dim);
+            cv.text('Zone test: upper lights green, lower purple, 30 s.', 44, 350, 15, t.dim);
             recent.slice(-7).forEach((l, i) => cv.text(l.length > 66 ? l.slice(0, 65) + '…' : l, 44, 378 + i * 19, 14, t.dim, { literal: true }));
 
             G.panel(cv, t, 600, 44, 976, 468, 'Lights as the body module reports them');

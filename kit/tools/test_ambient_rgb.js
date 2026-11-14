@@ -12,7 +12,7 @@ process.env.MGU_AMBIENT_FLASH = path.join(TMP, 'flash.json');
 const A = path.join(__dirname, '..', '..', 'apps', 'ambient_config');
 const L = require(path.join(A, 'lin'));
 const S = require(path.join(A, 'scenes'));
-const { Lights } = require(path.join(A, 'lights'));
+const { Lights, sameShade } = require(path.join(A, 'lights'));
 const { Control, DEFAULT_LOOK } = require(path.join(A, 'control'));
 
 let fails = 0, checks = 0;
@@ -73,7 +73,7 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     const BUS = [[0x0f, 0x0c], [0x15, 0x01, 0x05, 0x13]];
     const lit = BUS.map((b) => b.map(() => [0, 0, 0]));
     const writes = [];
-    let refuse = false, drop = null, asleep = false;
+    let refuse = false, drop = null, asleep = false, dimRead = 1;   // dimRead: the reads scaled, as a G30 reports them
     const diag = {
         physical: async (target, sid, data) => {
             await sleep(2);
@@ -82,7 +82,7 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
             if (sid === 0x22 && asleep) return null;
             if (sid === 0x22) {
                 const b = [0x62].concat(data);
-                for (let i = 0; i < 26; i++) b.push.apply(b, BUS[bus][i] ? [BUS[bus][i], lit[bus][i][2], lit[bus][i][1], lit[bus][i][0], 100, 0, 0, 0, 0, 0] : [0xff, 0xff, 0xff, 0xff, 0x7f, 3, 7, 7, 7, 7]);
+                for (let i = 0; i < 26; i++) b.push.apply(b, BUS[bus][i] ? [BUS[bus][i], Math.round(lit[bus][i][2] * dimRead), Math.round(lit[bus][i][1] * dimRead), Math.round(lit[bus][i][0] * dimRead), 100, 0, 0, 0, 0, 0] : [0xff, 0xff, 0xff, 0xff, 0x7f, 3, 7, 7, 7, 7]);
                 return b.concat([2]);
             }
             writes.push(data.slice());
@@ -138,11 +138,22 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     const tr = await lights.test();
     ok(tr.length === 6 && writes.every((w) => w[2] !== 0) && writes.length === 6, 'zone test: one write a light, by its NAD');
     const fw2 = tr.find((r) => r.light.bus === 1 && r.light.nad === 2), dash = tr.find((r) => r.light.bus === 1 && r.light.nad === 1);
-    ok(fw2 && fw2.reply === '6E' && !fw2.ok && dash.ok && dash.want.join() === '254,0,0' && tr.filter((r) => r.ok).length === 5,
+    ok(fw2 && fw2.reply === '6E' && !fw2.ok && dash.ok && dash.want.join() === '0,254,0' && tr.filter((r) => r.ok).length === 5,
         'zone test: upper red, lower blue, the dropped one missed');
     ok(lights.tested && lights.tested.results === tr && !lights.held, 'zone test: kept for the Check tab, the writing goes on');
     await sleep(300);
     ok(lit[1][1].join() === '0,0,254' && lit[1][0].join() === '254,0,0', 'after the zone test: the look written again');
+    // a G30 reads each colour scaled (254,0,0 as 44,2,0): the zone test and the read-back compare the shade
+    dimRead = 0.18; drop = null;
+    const tr2 = await lights.test();
+    ok(tr2.every((r) => r.ok), 'zone test, reads scaled: every light took it (' + tr2.filter((r) => r.ok).length + ' of ' + tr2.length + ')');
+    await sleep(300);
+    writes.length = 0; lights.recheck(2);
+    await sleep(300);
+    ok(writes.length === 0, 'read back scaled: nothing written again (' + writes.length + ' writes)');
+    dimRead = 1;
+    ok(sameShade([254, 0, 0], [44, 2, 0]) && sameShade([0, 0, 254], [0, 5, 58]) && !sameShade([254, 0, 0], [0, 5, 58]) && !sameShade([254, 0, 0], [0, 0, 0]) && !sameShade([254, 0, 0], [254, 100, 0]),
+        'the shade: a G30\'s dimmed reads match, another colour or dark does not');
     lit[1][3] = [9, 9, 9];
     const rb = await lights.readBack();
     ok(rb.find((l) => l.bus === 1 && l.nad === 4).rgb.join() === '9,9,9' && lights.readAt > 0 && !lights.held, 'read lights: the colours as the body module reports them');

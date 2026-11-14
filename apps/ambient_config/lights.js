@@ -30,10 +30,19 @@ const PAUSE_MS = 10000, FAILS = 4, RELEASE_TRIES = 3;
 const ALL = 0;                 // NAD 0: every light of the bus
 const CHECK_MS = 1500;         // a still colour's read-back, this long after its last write
 const HOLD_WAIT_MS = 3000;     // hold(): the longest it waits for a write (or read-back) of ours under way
+// the zone test's colours: green above, purple below, unlike most looks, so the change shows in the car
+const TEST_UPPER = [0, 254, 0], TEST_LOWER = [160, 0, 254];
 const REASSERT_MS = [1500, 4000, 8000];   // reassert(): a new driving mode's rewrites, this long after it
 
 const echo = (sid, did) => (u) => (u[0] === sid + 0x40 && u[1] === did[0] && u[2] === did[1]) || (u[0] === 0x7f && u[1] === sid);
 const hex = (b) => Array.prototype.map.call(b || [], (x) => ('0' + (x & 0xff).toString(16).toUpperCase()).slice(-2)).join(' ');
+/* A colour read back against the one written: some cars' body module (a G30's) reports each colour scaled by the light's
+ * brightness and the car's dimming (254,0,0 reads 44,2,0 there), so the shade is compared, not the level. */
+const shade = (rgb) => { const m = Math.max.apply(null, rgb); return m > 0 ? rgb.map((v) => v / m) : null; };
+const sameShade = (want, read) => {
+    const a = want ? shade(want.map((v) => Math.min(254, v))) : null, b = read ? shade(read) : null;
+    return !a || !b ? !a && !b && !!want && !!read : a.every((v, i) => Math.abs(v - b[i]) < 0.2);
+};
 const same = (a, b) => !!a && !!b && Math.abs(a.bright - b.bright) < 2 && a.rgb.every((x, i) => Math.abs(x - b.rgb[i]) < 3);
 
 class Lights extends EventEmitter {
@@ -205,14 +214,14 @@ class Lights extends EventEmitter {
 
     /**
      * The zone test (Check tab): every light written on its own, by its NAD (no NAD 0 to the whole bus): the upper
-     * lights one colour, the lower ones another, held 30 s; then both buses read back. Tells apart a light the car
+     * lights green, the lower ones purple, held 30 s; then both buses read back. Tells apart a light the car
      * did not take from one it did, and which lights are upper and lower. The scene's writing waits meanwhile and
      * starts again after, every light written anew.
      * -> [{ light, want, reply ('6E' | '7F 2E 31' | an error), back ([r, g, b] read | null), ok }]; also this.tested.
      */
     async test(o) {
         o = o || {};
-        const upper = o.upper || [254, 0, 0], lower = o.lower || [0, 0, 254];
+        const upper = o.upper || TEST_UPPER, lower = o.lower || TEST_LOWER;
         const out = [];
         await this.hold('test', true);
         try {
@@ -231,7 +240,7 @@ class Lights extends EventEmitter {
                     const r = out.find((x) => x.light.bus === bus && x.light.nad === m.nad);
                     if (!r) return;
                     r.back = m.rgb; r.light.rgb = m.rgb; r.light.bright = m.bright;
-                    r.ok = r.want.every((v, j) => Math.abs(v - m.rgb[j]) < 3);
+                    r.ok = sameShade(r.want, m.rgb);
                 });
             }
             this.log.info('lights: zone test ' + out.map((x) => 'B' + (x.light.bus + 1) + '#' + x.light.nad + '/' + hex([x.light.loc]) + ' ' + x.light.part
@@ -324,7 +333,7 @@ class Lights extends EventEmitter {
             mods.forEach((m) => {
                 const l = on.find((x) => x.nad === m.nad);
                 if (!l) return;
-                const close = (rgb) => !!rgb && rgb.every((v, i) => Math.abs(Math.min(254, v) - m.rgb[i]) < 3);
+                const close = (rgb) => sameShade(rgb, m.rgb);
                 if (this._checkOff) {
                     if (close(this._sent.get(l))) { this.log.info('lights: ' + l.name + ' still ours, giving it back'); this._release.push({ light: l }); }
                 } else if (this._last.has(l) && !close(this._last.get(l).rgb)) {
@@ -414,4 +423,4 @@ class Lights extends EventEmitter {
     }
 }
 
-module.exports = { Lights, HOLD_S, RENEW_MS, MOVE_HOLD_S, REASSERT_MS };
+module.exports = { Lights, HOLD_S, RENEW_MS, MOVE_HOLD_S, REASSERT_MS, TEST_UPPER, TEST_LOWER, sameShade };
