@@ -369,9 +369,8 @@ ok(Math.round(S.hueOf([0, 0, 255])) === 240 && S.hsv(120, 1, 1).join() === '0,25
     ok(!fake.overs.turn, 'Turn signal glow off: none');
     c.doors(['passenger rear']);
     ok(fake.overs.doors && fake.overs.doors.test(pl(0x10)) && fake.overs.doors.test(pl(0x22)) && fake.overs.doors.test(pl(0x45)) && !fake.overs.doors.test(pl(0x0c))
-        && fake.overs.doors.at(0).rgb.join() === '255,0,0' && fake.overs.doors.at(0).bright === 100 && fake.overs.doors.at(1600).bright === 35
-        && fake.overs.doors.at(2500).bright === 0 && fake.overs.doors.at(3500).bright === 35 && fake.overs.doors.at(3900).bright === 100,
-        'the passenger rear door open: its lights pulse red slowly (full, half, dark, half), the front door\'s not');
+        && [0, 1600, 2500, 9000].every((t) => fake.overs.doors.at(t).rgb.join() === '255,0,0' && fake.overs.doors.at(t).bright === 100),
+        'the passenger rear door open: its lights solid red, the front door\'s not');
     c.away(true);
     ok(!fake.overs.doors, 'the car locked and left with a door open: no red, so the body module can sleep');
     c.away(false);

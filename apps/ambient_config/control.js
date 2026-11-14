@@ -15,7 +15,7 @@
  * renewed; someone back in (living, ignition, driving): the look again, with the welcome sweep when it is on.
  * Over the look (or the car's own colour), with their settings switched on (both off by default): turn(side) - while a turn signal is on, that side's
  * door lines blink green, fully on and off, as fast as the lights take it (setting turnGlow; hazards: both sides; not with
- * the car locked and left); doors(open) - every light of an open door pulses red, slowly, until it closes (setting doorRed; not with
+ * the car locked and left); doors(open) - every light of an open door is solid red until it closes (setting doorRed; not with
  * the car locked and left, so a door left open does not keep the body module awake); with the hazards on (setting
  * hazardRed) every light pulses red, bright then dim, in place of the turn glow (not with the car locked and left). Left is
  * the driver's side on a left-hand drive car.
@@ -29,18 +29,8 @@ const NIGHT = 0.5;
 const GLOW = [0, 230, 60], RED = [255, 0, 0];
 /* On one frame, dark the next (the light on at no brightness: black, not the car's own colour). */
 const blink = (rgb) => (t, on) => (on ? { rgb, bright: 100 } : { rgb: [0, 0, 0], bright: 0 });
-/* An open door's slow pulse: full, half, dark, half (ms each). Few steps: each is a write per light (~0.2 s each), so a
- * door's three or four lights change within about half a second of each other, and the long full and dark parts hide that. */
-const PULSE = [[1400, 100], [500, 35], [1400, 0], [500, 35]];
-const PULSE_MS = PULSE.reduce((a, p) => a + p[0], 0);
-const doorPulse = (rgb) => (t) => {
-    let x = t % PULSE_MS;
-    for (let i = 0; i < PULSE.length; i++) {
-        if (x < PULSE[i][0]) return PULSE[i][1] ? { rgb, bright: PULSE[i][1] } : { rgb: [0, 0, 0], bright: 0 };
-        x -= PULSE[i][0];
-    }
-    return { rgb, bright: 100 };
-};
+/* An open door: its lights solid red until it closes. */
+const solid = (rgb) => () => ({ rgb, bright: 100 });
 /* Bright one frame, dim the next (every light one colour: one write a bus, so it keeps about the hazards' pace). */
 const PULSE_DIM = 15;
 const pulse = (rgb) => (t, on) => ({ rgb, bright: on ? 100 : PULSE_DIM });
@@ -149,7 +139,7 @@ class Control {
         if (doors.join() !== this._red) {
             this._red = doors.join();
             // every light of an open door (its line, decor, handle and pocket), not only its line
-            this.lights.overlay('doors', doors.length ? (l) => doors.indexOf(doorOf(l)) >= 0 : null, doorPulse(RED));
+            this.lights.overlay('doors', doors.length ? (l) => doors.indexOf(doorOf(l)) >= 0 : null, solid(RED));
         }
     }
 
